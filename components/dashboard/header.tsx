@@ -3,9 +3,24 @@
 import { useSession } from "next-auth/react";
 import { Bell, Search, Menu } from "lucide-react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
+import { notificationsAPI } from "@/lib/api";
 
 export default function Header() {
   const { data: session } = useSession();
+  const router = useRouter();
+
+  const { data: notificationsData } = useQuery({
+    queryKey: ["notifications"],
+    queryFn: async () => {
+      const res = await notificationsAPI.getAll();
+      return res.data as { unreadCount: number };
+    },
+    staleTime: 30000,
+  });
+
+  const unreadCount = notificationsData?.unreadCount || 0;
 
   return (
     <header className="border-b border-slate-700 px-6 py-4 flex items-center justify-between">
@@ -27,9 +42,17 @@ export default function Header() {
       {/* Right */}
       <div className="flex items-center gap-6">
         {/* Notifications */}
-        <button className="relative p-2 hover:bg-slate-700 rounded-lg transition">
+        <button
+          className="relative p-2 hover:bg-slate-700 rounded-lg transition"
+          onClick={() => router.push("/dashboard/settings?tab=notifications")}
+          aria-label="Open notifications"
+        >
           <Bell className="w-6 h-6 text-slate-300" />
-          <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
+          {unreadCount > 0 && (
+            <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] leading-[18px] text-center">
+              {unreadCount > 99 ? "99+" : unreadCount}
+            </span>
+          )}
         </button>
 
         {/* User Profile */}

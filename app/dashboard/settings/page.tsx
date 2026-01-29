@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Building2, Lock, Bell } from 'lucide-react';
 import CompanyProfile from '@/components/dashboard/settings/company-profile';
 import SecuritySettings from '@/components/dashboard/settings/security-settings';
@@ -10,6 +10,15 @@ type SettingTab = 'profile' | 'security' | 'notifications';
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<SettingTab>('notifications');
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get('tab');
+    if (tab === 'profile' || tab === 'security' || tab === 'notifications') {
+      setActiveTab(tab);
+    }
+  }, []);
 
   const navItems = [
     { id: 'profile', label: 'Company Profile', icon: Building2 },
