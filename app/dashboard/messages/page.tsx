@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -27,7 +27,7 @@ type Message = {
   attachments?: { url: string; fileType?: string }[];
 };
 
-export default function MessagesPage() {
+function MessagesPageContent() {
   const { data: session } = useSession();
   const currentUserId = session?.user?.id;
   const queryClient = useQueryClient();
@@ -338,5 +338,25 @@ export default function MessagesPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function MessagesPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="space-y-6">
+          <div>
+            <h1 className="text-3xl font-bold text-white mb-1">Messages</h1>
+            <p className="text-slate-400">Loading conversations...</p>
+          </div>
+          <div className="rounded-xl border border-white/10 bg-white/5 backdrop-blur-md p-6 text-slate-300">
+            Loading messages...
+          </div>
+        </div>
+      }
+    >
+      <MessagesPageContent />
+    </Suspense>
   );
 }
