@@ -205,7 +205,7 @@ export default function AddProjectModal({ isOpen, onClose }: AddProjectModalProp
               <select
                 value={formData.clientId}
                 onChange={(e) => setFormData({ ...formData, clientId: e.target.value })}
-                className="w-full bg-white/10 border border-white/20 text-white rounded-xl px-3 py-2"
+                className="w-full bg-black/40 border border-white/20 text-white rounded-xl px-3 py-2"
               >
                 <option value="">Select a client</option>
                 {clientsData.map((client: any) => (
@@ -255,7 +255,7 @@ export default function AddProjectModal({ isOpen, onClose }: AddProjectModalProp
             <select
               value={formData.status}
               onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-              className="w-full bg-white/10 border border-white/20 text-white rounded-xl px-3 py-2"
+              className="w-full bg-black/40 border border-white/20 text-white rounded-xl px-3 py-2"
             >
               <option value="Active">Active</option>
               <option value="Pending">Pending</option>

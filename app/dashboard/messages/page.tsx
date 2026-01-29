@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,8 @@ import Image from 'next/image';
 import { chatsAPI, messagesAPI } from '@/lib/api';
 import { useSession } from 'next-auth/react';
 import { toast } from 'sonner';
+import { useSearchParams } from 'next/navigation';
+import { io, Socket } from 'socket.io-client';
 
 type Chat = {
   _id: string;
@@ -29,6 +31,10 @@ export default function MessagesPage() {
   const { data: session } = useSession();
   const currentUserId = session?.user?.id;
   const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
+  const requestedChatId = searchParams.get('chatId');
+  const socketRef = useRef<Socket | null>(null);
+  const lastChatIdRef = useRef<string | null>(null);
 
   const [search, setSearch] = useState('');
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
@@ -76,8 +82,83 @@ export default function MessagesPage() {
     markReadMutation.mutate(chatId);
   };
 
+  useEffect(() => {
+    if (!session?.accessToken) return;
+
+    const socketUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:5000';
+    const socket = io(socketUrl, {
+      auth: { token: `Bearer ${session.accessToken}` },
+    });
+
+    socketRef.current = socket;
+
+    socket.on('message received', (message: any) => {
+      const chatId = message?.chat?._id || message?.chat;
+      if (chatId) {
+        queryClient.invalidateQueries({ queryKey: ['chats'] });
+      }
+
+      if (chatId && chatId === activeChatId) {
+        queryClient.setQueryData(['messages', activeChatId], (old: any) => {
+          const existing = Array.isArray(old) ? old : [];
+          return [...existing, message];
+        });
+      }
+    });
+
+    socket.on('message:error', (err: any) => {
+      toast.error(err?.message || 'Failed to send message');
+    });
+
+    return () => {
+      socket.disconnect();
+      socketRef.current = null;
+      lastChatIdRef.current = null;
+    };
+  }, [session?.accessToken, queryClient, activeChatId]);
+
+  useEffect(() => {
+    const socket = socketRef.current;
+    if (!socket) return;
+
+    const previous = lastChatIdRef.current;
+    if (previous && previous !== activeChatId) {
+      socket.emit('leave chat', previous);
+    }
+
+    if (activeChatId) {
+      socket.emit('join chat', activeChatId);
+      lastChatIdRef.current = activeChatId;
+    } else {
+      lastChatIdRef.current = null;
+    }
+  }, [activeChatId]);
+
+  useEffect(() => {
+    if (!requestedChatId || !filteredChats.length) return;
+    const exists = filteredChats.some((chat) => chat._id === requestedChatId);
+    if (exists) {
+      setActiveChatId(requestedChatId);
+      markReadMutation.mutate(requestedChatId);
+    }
+  }, [requestedChatId, filteredChats, markReadMutation]);
+
   const handleSend = () => {
-    toast.info('Sending via socket is not yet wired to this screen.');
+    const socket = socketRef.current;
+    if (!socket) {
+      toast.error('Socket is not connected');
+      return;
+    }
+    if (!activeChatId) {
+      toast.error('Select a chat first');
+      return;
+    }
+    if (!messageText.trim()) return;
+
+    socket.emit('message:send', {
+      chatId: activeChatId,
+      content: messageText.trim(),
+    });
     setMessageText('');
   };
 
@@ -234,7 +315,7 @@ export default function MessagesPage() {
               <div className="flex gap-2">
                 <Input
                   type="text"
-                  placeholder="Type a message (socket send coming soon)"
+                  placeholder="Type a message..."
                   value={messageText}
                   onChange={(e) => setMessageText(e.target.value)}
                   className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-500"

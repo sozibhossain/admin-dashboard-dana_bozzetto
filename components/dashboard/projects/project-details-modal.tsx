@@ -4,6 +4,7 @@ import React from "react";
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import {
   Dialog,
   DialogContent,
@@ -13,12 +14,13 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { projectsAPI, documentsAPI } from "@/lib/api";
+import { projectsAPI, documentsAPI, chatsAPI } from "@/lib/api";
 import { toast } from "sonner";
 import { X, Plus, Eye, Edit2, Trash2, Upload, FileText } from "lucide-react";
 import EditTaskModal from "./edit-task-modal";
 import AddTaskModal from "./add-task-modal";
 import DeleteConfirmDialog from "@/components/dashboard/delete-confirm-dialog";
+import { useSession } from "next-auth/react";
 
 interface ProjectDetailsModalProps {
   isOpen: boolean;
@@ -48,6 +50,8 @@ type ProjectDetails = {
 
 export default function ProjectDetailsModal({ isOpen, onClose, projectId }: ProjectDetailsModalProps) {
   const queryClient = useQueryClient();
+  const router = useRouter();
+  const { data: session } = useSession();
   const [activeTab, setActiveTab] = useState("team");
   const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
   const [isAddMilestoneOpen, setIsAddMilestoneOpen] = useState(false);
@@ -123,6 +127,14 @@ export default function ProjectDetailsModal({ isOpen, onClose, projectId }: Proj
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.message || "Failed to delete task");
+    },
+  });
+
+  const accessChatMutation = useMutation({
+    mutationFn: (payload: { userId: string; projectId: string }) =>
+      chatsAPI.access(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["chats"] });
     },
   });
 
@@ -232,7 +244,34 @@ export default function ProjectDetailsModal({ isOpen, onClose, projectId }: Proj
                         <Button
                           variant="ghost"
                           className="bg-white/10 hover:bg-white/20 text-white"
-                          onClick={() => toast.info("Open messages to chat")}
+                          onClick={async () => {
+                            if (!data?._id) return;
+                            if (!member?.user?._id) return;
+                            if (!session?.user?.id) {
+                              toast.error("Please sign in to start a chat");
+                              return;
+                            }
+                            if (member.user._id === session.user.id) {
+                              toast.info("You cannot start a chat with yourself");
+                              return;
+                            }
+
+                            try {
+                              const res = await accessChatMutation.mutateAsync({
+                                userId: member.user._id,
+                                projectId: data._id,
+                              });
+                              const chatId = res?.data?._id;
+                              if (chatId) {
+                                router.push(`/dashboard/messages?chatId=${chatId}`);
+                                handleClose();
+                              } else {
+                                toast.error("Chat could not be created");
+                              }
+                            } catch (error: any) {
+                              toast.error(error.response?.data?.message || "Failed to start chat");
+                            }
+                          }}
                         >
                           Message
                         </Button>
@@ -504,7 +543,7 @@ function AddMemberModal({
             <select
               value={memberId}
               onChange={(e) => setMemberId(e.target.value)}
-              className="w-full bg-white/10 border border-white/20 text-white rounded-xl px-3 py-2"
+              className="w-full bg-black/40 border border-white/20 text-white rounded-xl px-3 py-2"
             >
               <option value="">Select member</option>
               {members.map((member) => (
