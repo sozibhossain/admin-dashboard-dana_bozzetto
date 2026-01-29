@@ -35,6 +35,8 @@ function MessagesPageContent() {
   const requestedChatId = searchParams.get('chatId');
   const socketRef = useRef<Socket | null>(null);
   const lastChatIdRef = useRef<string | null>(null);
+  const activeChatIdRef = useRef<string | null>(null);
+  const requestedChatIdRef = useRef<string | null>(null);
 
   const [search, setSearch] = useState('');
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
@@ -98,8 +100,9 @@ function MessagesPageContent() {
         queryClient.invalidateQueries({ queryKey: ['chats'] });
       }
 
-      if (chatId && chatId === activeChatId) {
-        queryClient.setQueryData(['messages', activeChatId], (old: any) => {
+      const currentChatId = activeChatIdRef.current;
+      if (chatId && currentChatId && chatId === currentChatId) {
+        queryClient.setQueryData(['messages', currentChatId], (old: any) => {
           const existing = Array.isArray(old) ? old : [];
           return [...existing, message];
         });
@@ -115,7 +118,7 @@ function MessagesPageContent() {
       socketRef.current = null;
       lastChatIdRef.current = null;
     };
-  }, [session?.accessToken, queryClient, activeChatId]);
+  }, [session?.accessToken, queryClient]);
 
   useEffect(() => {
     const socket = socketRef.current;
@@ -137,11 +140,19 @@ function MessagesPageContent() {
   useEffect(() => {
     if (!requestedChatId || !filteredChats.length) return;
     const exists = filteredChats.some((chat) => chat._id === requestedChatId);
-    if (exists) {
+    if (!exists) return;
+    if (activeChatId !== requestedChatId) {
       setActiveChatId(requestedChatId);
+    }
+    if (requestedChatIdRef.current !== requestedChatId) {
+      requestedChatIdRef.current = requestedChatId;
       markReadMutation.mutate(requestedChatId);
     }
-  }, [requestedChatId, filteredChats, markReadMutation]);
+  }, [requestedChatId, filteredChats, activeChatId, markReadMutation]);
+
+  useEffect(() => {
+    activeChatIdRef.current = activeChatId;
+  }, [activeChatId]);
 
   const handleSend = () => {
     const socket = socketRef.current;

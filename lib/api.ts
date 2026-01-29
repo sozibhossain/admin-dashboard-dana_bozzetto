@@ -1,9 +1,51 @@
 import axios, { AxiosInstance, InternalAxiosRequestConfig } from "axios";
-import { getSession } from "next-auth/react";
+import { getSession, signOut } from "next-auth/react";
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:5000";
 
 let axiosInstance: AxiosInstance | null = null;
+let accessTokenCache: string | null = null;
+let refreshTokenCache: string | null = null;
+let sessionLoaded = false;
+let refreshPromise: Promise<string | null> | null = null;
+
+const loadSessionTokens = async () => {
+  if (sessionLoaded) return;
+  const session = await getSession();
+  accessTokenCache = session?.accessToken || null;
+  refreshTokenCache = session?.refreshToken || null;
+  sessionLoaded = true;
+};
+
+const refreshAccessToken = async () => {
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = (async () => {
+    if (!refreshTokenCache) {
+      return null;
+    }
+    try {
+      const response = await axios.post(`${BASE_URL}/api/auth/refresh`, {
+        refreshToken: refreshTokenCache,
+      });
+      const newAccessToken = response.data?.token;
+      accessTokenCache = newAccessToken || null;
+      return accessTokenCache;
+    } catch {
+      accessTokenCache = null;
+      refreshTokenCache = null;
+      sessionLoaded = false;
+      if (typeof window !== "undefined") {
+        await signOut({ callbackUrl: "/auth/login" });
+      }
+      return null;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
+};
 
 const createAxiosInstance = (): AxiosInstance => {
   const instance = axios.create({
@@ -17,9 +59,10 @@ const createAxiosInstance = (): AxiosInstance => {
   // Request interceptor
   instance.interceptors.request.use(
     async (config: InternalAxiosRequestConfig) => {
-      const session = await getSession();
-      if (session?.accessToken) {
-        config.headers.Authorization = `Bearer ${session.accessToken}`;
+      await loadSessionTokens();
+      if (accessTokenCache) {
+        config.headers = config.headers || {};
+        config.headers.Authorization = `Bearer ${accessTokenCache}`;
       }
       return config;
     },
@@ -34,26 +77,18 @@ const createAxiosInstance = (): AxiosInstance => {
     async (error) => {
       const originalRequest = error.config;
       
-      if (error.response?.status === 401 && !originalRequest._retry) {
+      if (
+        error.response?.status === 401 &&
+        !originalRequest._retry &&
+        !String(originalRequest?.url || "").includes("/api/auth/refresh")
+      ) {
         originalRequest._retry = true;
-        const session = await getSession();
-        
-        if (session?.refreshToken) {
-          try {
-            const response = await axios.post(
-              `${BASE_URL}/auth/refresh`,
-              { refreshToken: session.refreshToken }
-            );
-            
-            const newAccessToken = response.data.token;
-            originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
-            
-            return instance(originalRequest);
-          } catch (refreshError) {
-            // Redirect to login
-            window.location.href = "/auth/login";
-            return Promise.reject(refreshError);
-          }
+        await loadSessionTokens();
+        const newAccessToken = await refreshAccessToken();
+        if (newAccessToken) {
+          originalRequest.headers = originalRequest.headers || {};
+          originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+          return instance(originalRequest);
         }
       }
       

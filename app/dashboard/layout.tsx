@@ -13,6 +13,12 @@ const queryClient = new QueryClient({
     queries: {
       staleTime: 60 * 1000,
       gcTime: 5 * 60 * 1000,
+      refetchOnWindowFocus: false,
+      retry: (failureCount, error) => {
+        const status = (error as any)?.response?.status;
+        if (status === 401) return false;
+        return failureCount < 2;
+      },
     },
   },
 });
@@ -23,7 +29,7 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   return (
-    <SessionProvider>
+    <SessionProvider refetchInterval={0} refetchOnWindowFocus={false}>
       <QueryClientProvider client={queryClient}>
         <div className="flex h-screen">
           {/* Sidebar */}

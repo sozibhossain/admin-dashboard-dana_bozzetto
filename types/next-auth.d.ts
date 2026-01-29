@@ -19,6 +19,8 @@ declare module "next-auth" {
     };
     accessToken: string;
     refreshToken: string;
+    accessTokenExpires?: number | null;
+    error?: string;
   }
 }
 
@@ -32,5 +34,7 @@ declare module "next-auth/jwt" {
       public_id: string;
       url: string;
     };
+    accessTokenExpires?: number | null;
+    error?: string;
   }
 }
